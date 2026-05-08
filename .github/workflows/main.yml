@@ -1,6 +1,6 @@
 name: Windows 11 Remote VM
 on: 
-  workflow_dispatch: # Allows you to start it manually
+  workflow_dispatch:
 
 jobs:
   build:
@@ -9,21 +9,32 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
+      - name: Install and Connect Tailscale
+        shell: powershell
+        run: |
+          # Download and Install Tailscale
+          curl.exe -Lo tailscale-setup.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          Start-Process -FilePath .\tailscale-setup.exe -ArgumentList "/quiet" -Wait
+          
+          # Add Tailscale to Path for this session
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          # Authenticate and Start Tailscale
+          # Use your Auth Key here (recommended to use a secret)
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-win11
 
       - name: Enable Remote Desktop
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          
+          # Optional: Set a password for the 'runneradmin' user so you can log in
+          net user runneradmin "YourSecurePassword123!"
 
       - name: Keep Alive
         run: |
-          Write-Host "Windows 11 is running. Connect via Tailscale IP using RDP."
-          # This keeps the job running for 6 hours (the GitHub limit)
-          Start-Sleep -Seconds 21600 
+          $ip = tailscale ip -4
+          Write-Host "Tailscale IP is: $ip"
+          Write-Host "Connect via RDP to $ip with username 'runneradmin'"
+          Start-Sleep -Seconds 21600
